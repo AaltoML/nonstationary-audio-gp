@@ -145,7 +145,7 @@ soundPath = '../../audio/speech/'; % Specify where to load the data from
 %% setup and optimisation
   
   % Moments
-  mom = @(hyp,mu,s2,nmfW,yall,k) feval(likfunc,link,hyp,yall(k),mu,s2,nmfW,p_cubature,ep_fraction,'infEP');
+  mom = @(hyp,mu,s2,nmfW,ep_frac,yall,k) feval(likfunc,link,hyp,yall(k),mu,s2,nmfW,p_cubature,ep_frac,'infEP');
   
   % State space model
   ss = @(x,p1,p2,kern1,kern2) ss_modulators_nmf(p1,p2,kern1,kern2);

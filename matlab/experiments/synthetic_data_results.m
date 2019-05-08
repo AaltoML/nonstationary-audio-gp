@@ -3,6 +3,8 @@ addpath('../');
 addpath('../prob_filterbank/'); % filterbank code
 addpath('../symmetric-cubature-rules/'); % code for approximate Gaussian integrals
 
+results_path = '/Users/williamwilkinson/Documents/PhD/inProgress/inf-hor-mat-files/';
+
 filenames = {'EP_1','EP_20',...
              'IHGP_EP_1','IHGP_EP_20',...
              'EKF_1','EKF_20'};
@@ -18,7 +20,7 @@ grey = [0.2,0.2,0.2];
 %blue = [0 0 1];
 %green = [0 1 0];
 t = (1:10:5000)/16000*1000;
-matName = strcat('synthetic_results_',filenames{1},'.mat');
+matName = strcat(results_path,'synthetic_results_',filenames{1},'.mat');
 results = load(matName);
 link = results.link;
 
@@ -33,7 +35,7 @@ box on
 set(gca,'layer','top')
 
 % Draw shade
-fill([2001 4000 4000 2001 2001]/16,[0 0 3.1 3.1 0],1, ...
+fill([2901 4400 4400 2901 2901]/16,[0 0 3.1 3.1 0],1, ...
     'FaceColor',lcolor(5,:),'EdgeColor',lcolor(5,:))
 
 % Draw gt
@@ -50,7 +52,7 @@ box on
 set(gca,'layer','top')
 
 % Draw shade
-fill([2001 4000 4000 2001 2001]/16,[0 0 3.1 3.1 0],1, ...
+fill([2901 4000 4000 2901 2901]/16,[0 0 3.1 3.1 0],1, ...
     'FaceColor',lcolor(5,:),'EdgeColor',lcolor(5,:))
 
 % Draw gt
@@ -61,7 +63,7 @@ h(1) = plot(t,link(results.y_s(1:10:end,2)),'k','LineWidth',1,'Color',grey)
 %colours = {blue,red,green};
 c = 1;
 for n = 1:length(filenames)
-    matName = strcat('synthetic_results_',filenames{n},'.mat');
+    matName = strcat(results_path,'synthetic_results_',filenames{n},'.mat');
     results = load(matName);
     if mod(n,2)
         figure(1)
@@ -102,24 +104,24 @@ figure(2)
   end
   
 %%
-dind = 4;
-t = 2001:5:4000;
+dind = 2;
+t = 2901:2:4400;
 
 figure(3);clf
 hold on
 
 % Shade
-fill([2001 4000 4000 2001 2001]/16,[-1 -1 1 1 -1]*0.75,1, ...
+fill([t(1) t(end) t(end) t(1) t(1)]/16,[-1 -1 1 1 -1]*0.75,1, ...
     'FaceColor',lcolor(5,:),'EdgeColor',lcolor(5,:))
 
 plot(t/16,results.y_f(t,dind),'k-','Color',grey,'LineWidth',0.75)
 xlabel('Time [ms]')
-ylabel('$z_4(t)$')
+ylabel('$z_2(t)$')
 c=1;
 ylim([-.75 .75])
 
 for n = [2,4,6]%1:length(filenames)
-    matName = strcat('synthetic_results_',filenames{n},'.mat');
+    matName = strcat(results_path,'synthetic_results_',filenames{n},'.mat');
     results = load(matName);
     if mod(n,2)
         figure(3)
@@ -140,7 +142,7 @@ set(gca,'layer','top')
 
 % Save figure
   if false
-    matlab2tikz('../../paper/figs/synthetic_data_sub_2.tex', ...
+    matlab2tikz('../../paper/figs/synthetic_data_sub_2_new.tex', ...
       'noSize',true, ... 
       'relativeDataPath','./figs/', ...
       'extraAxisOptions',{'width=\figurewidth','height=\figureheight'},...
@@ -151,17 +153,17 @@ set(gca,'layer','top')
   
 %%
 for n = 1:length(filenames)
-    matName = strcat('synthetic_results_',filenames{n},'.mat');
+    matName = strcat(results_path,'synthetic_results_',filenames{n},'.mat');
     results = load(matName);
     fprintf('%s RMSE_sig: %g\n',results.inf_type,results.RMSE_sig)
 end
 for n = 1:length(filenames)
-    matName = strcat('synthetic_results_',filenames{n},'.mat');
+    matName = strcat(results_path,'synthetic_results_',filenames{n},'.mat');
     results = load(matName);
     fprintf('%s RMSE_sub: %g\n',results.inf_type,results.RMSE_sub)
 end
 for n = 1:length(filenames)
-    matName = strcat('synthetic_results_',filenames{n},'.mat');
+    matName = strcat(results_path,'synthetic_results_',filenames{n},'.mat');
     results = load(matName);
     fprintf('%s RMSE_mod: %g\n',results.inf_type,results.RMSE_mod)
 end
@@ -169,7 +171,7 @@ end
 
 
 %%
-matName = strcat('synthetic_results_',filenames{2},'.mat');
+matName = strcat(results_path,'synthetic_results_',filenames{2},'.mat');
 results = load(matName);
 Emod = results.Emod;
 y_s = results.y_s;

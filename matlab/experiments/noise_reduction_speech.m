@@ -72,7 +72,7 @@ for j = 4%1:length(noise_levels)
 
     % Moments
     %   mom = @(hyp,mu,s2,nmfW,yall,k) feval(likfunc,link,hyp,yall(k),mu,s2,nmfW,p_cubature,ep_fraction,'infEP');
-    mom = @(hyp,mu,s2,nmfW,yall,k) feval(likfunc,link,hyp,yall(k),mu,s2,nmfW,ep_fraction,wn,xn_unscaled,'infEP');
+    mom = @(hyp,mu,s2,nmfW,ep_frac,yall,k) feval(likfunc,link,hyp,yall(k),mu,s2,nmfW,ep_frac,wn,xn_unscaled,'infEP');
 
     w_opt = log([noise_levels(j);...
                  trained_model.param1(1:D);...
