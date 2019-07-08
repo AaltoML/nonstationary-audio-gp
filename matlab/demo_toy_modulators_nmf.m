@@ -6,7 +6,7 @@ addpath('symmetric-cubature-rules/'); % code for approximate Gaussian integrals
   dt = 1;
   kernel1 = 'matern32'; % kernel for subbands
   kernel2 = 'matern52'; % kernel for amplitude envelopes
-  T = 2000;
+  T = 5000;
   t = linspace(1,T,T)';
   link = @(g) log(1+exp(g)); % link function
 %   link = @(g) exp(g);
@@ -19,10 +19,10 @@ addpath('symmetric-cubature-rules/'); % code for approximate Gaussian integrals
   optimise = 0;
   
   % pick some random model parameters
-  len_fast = 20 + 500*rand(D,1);
+  len_fast = 150 + 400*rand(D,1);
   var_fast = 0.01*ones(D,1);
   omega = linspace(pi/3,pi/50,D)';
-  len_slow = linspace(200,2000,N)';
+  len_slow = linspace(200,1500,N)';
   var_slow = 5 + 5*rand(N,1);
   W = 0.1*abs((2.*rand(D,N)).^2-0.2);
   
@@ -74,7 +74,7 @@ addpath('symmetric-cubature-rules/'); % code for approximate Gaussian integrals
   
   ep_fraction = 1; % Power EP fraction
   
-  ep_itts = 20; % EP iterations
+  ep_itts = 10; % EP iterations
   
   ep_damping = linspace(0.1, 0.5, ep_itts);%0.1; % EP damping
   
