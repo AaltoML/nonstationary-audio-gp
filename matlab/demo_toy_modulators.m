@@ -100,7 +100,7 @@ addpath('symmetric-cubature-rules/'); % code for approximate Gaussian integrals
   if exist('w2','var'), w_ = w2; else, w_ = w; end
   % ADF filtering
   tic
-  [Eft,Varft,Covft,lb,ub,out] = gf_adf_modulator(w_,t,y,ss,mom,t,kernel1,kernel2,num_lik_params);
+  [Eft,Varft,Covft,lb,ub,out] = gf_ep_modulator(w_,t,y,ss,mom,t,kernel1,kernel2,num_lik_params);
   toc
   
   % GHKF filtering (also feat EKF filter, but commented out)
