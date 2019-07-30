@@ -13,12 +13,18 @@ addpath('symmetric-cubature-rules/'); % code for approximate Gaussian integrals
   rng('default')
   rng(100,'twister')
   w_lik = 1e-4; % observation noise
-  p_cubature = 7; % order of cubature for Gaussian integral
+  p_cubature = 9; % order of cubature for Gaussian integral
+  max_iters = 5; % maximum number of iterations
   
-  %%% tune the hyperparameters? %%%
+  %%% tune the hyperparameters? %%% (optimisation still quite unstable)
   optimise = 0;
   
-  % pick some random model parameters
+  ep_fraction = 0.5; % Power EP fraction
+  ep_itts = 3; % EP iterations
+  ep_damping = linspace(0.5, 0.5, ep_itts); % EP damping
+  
+  
+%% pick some random model parameters
   len_fast = 150 + 400*rand(D,1);
   var_fast = 0.01*ones(D,1);
   omega = linspace(pi/3,pi/50,D)';
@@ -70,17 +76,9 @@ addpath('symmetric-cubature-rules/'); % code for approximate Gaussian integrals
 %% setup and optimisation
 
   likfunc = @likModulatorNMFPower;
-%   likfunc = @likModulatorNMF;
-  
-  ep_fraction = 1; % Power EP fraction
-  
-  ep_itts = 10; % EP iterations
-  
-  ep_damping = linspace(0.1, 0.5, ep_itts);%0.1; % EP damping
   
   % Moments
   mom = @(hyp,mu,s2,nmfW,ep_frac,yall,k) feval(likfunc,link,hyp,yall(k),mu,s2,nmfW,p_cubature,ep_frac,'infEP');
-%   mom = @(hyp,mu,s2,nmfW,yall,k) feval(likfunc,link,hyp,yall(k),mu,s2,nmfW,p_cubature,'infEP');
   
   % State space model
   ss = @(x,p1,p2,kern1,kern2) ss_modulators_nmf(p1,p2,kern1,kern2);
@@ -177,3 +175,4 @@ addpath('symmetric-cubature-rules/'); % code for approximate Gaussian integrals
   title('signal (via NMF)')
   
   fprintf('RMSE: %d \n',sqrt(mean((y-Esig).^2)))
+  fprintf('lZ: %d \n',sum(out.lZ))

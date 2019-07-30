@@ -1,4 +1,4 @@
-function [varargout] = likModulator(link, hyp, y, mu, s2, p, inf, i)
+function [varargout] = likModulatorPower(link, hyp, y, mu, s2, p, ep_fraction, inf, i)
 
 % INPUTS:
 % link: link function, e.g. softplus
@@ -20,7 +20,7 @@ else
       error('infLaplace not implemented for modulator likelihood')
 
   case 'infEP'   
-    if nargin<8                                             % no derivative mode
+    if nargin<9                                             % no derivative mode
       
       jitter = 1e-8;
       D = length(mu)/2;
@@ -37,14 +37,15 @@ else
         [xn, wn] = mvhermgauss(mu_g,s2_g,p); % Gauss-Hermite quadrature - Will's implementation
       end
       
-      normy = @(x) normpdf(y, ...
-                           link(x)*mu_z, ...
-                           sqrt(sn2+(link(x).^2)*s2_z));
-      normy_xn = normy(xn);
       link_xn = link(xn);
-      sn2_link_xn2_s2_z = sn2 + link_xn.^2 * s2_z;
+      sn2_link_xn2_s2_z = sn2/ep_fraction + link_xn.^2 * s2_z;
       link_xn_mu_z = link_xn * mu_z;
       xn_mu_g_s2_g = (xn - mu_g') ./ s2_g';
+      
+      normy = @(x) normpdf(y, ...
+                           link(x)*mu_z, ...
+                           sqrt(sn2_link_xn2_s2_z));
+      normy_xn = normy(xn);
 
 %       Z_integrand = @(x) normy(x);
 %       Z = sum(wn .* Z_integrand(xn));

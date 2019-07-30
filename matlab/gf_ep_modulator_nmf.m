@@ -1,16 +1,24 @@
 function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_lik_params,D,N,ep_fraction,ep_damping,ep_itts)
-% GF_EP_MODULATOR_NMF - Solve TF-NMF GP model by Power EP
+% GF_EP_MODULATOR_NMF - Solve time-frequency-NMF GP model by Power EP
 %
 % Syntax:
-%   [...] = gf_ep_modulator_nmf(w,x,y,k,xt)
+%   [...] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_lik_params,D,N,ep_fraction,ep_damping,ep_itts)
 %
 % In:
-%   w     - Log-parameters (nu, sigma2, theta)
-%   x     - Training inputs
-%   y     - Training outputs
-%   ss    - State space model function handle, [F,L,Qc,...] = @(x,theta) 
-%   mom   - Moment calculations for ADF
-%   xt    - Test inputs (default: empty)
+%   w              - Log-parameters
+%   x              - Training inputs
+%   y              - Training outputs
+%   ss             - State space model function handle, [F,L,Qc,...] = @(x,theta) 
+%   mom            - Moment calculations for EP
+%   xt             - Test inputs (default: empty)
+%   kernel1        - kernel for subbands
+%   kernel2        - kernel for modulators
+%   num_lik_params - number of hypers. in likelihood model
+%   D              - number of subbands
+%   N              - number of modulators
+%   ep_fraction    - the power in Power EP
+%   ep_damping     - how much to damp the EP updates
+%   ep_itts        - number of EP iterations
 %
 % Out (if xt is empty or not supplied):
 %
@@ -26,40 +34,15 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
 %   ub    - 95% confidence upper bound
 %
 % Description:
-%   Consider the following GP model:
-%
-%       f ~ GP(0,k(x,x')),
-%     y_i ~ p(y_i | f(x_i)),  i=1,2,...,n,
-%
-%   where k(x,x') is the prior covariance function. The state space model 
-%   giving you linear time complexity in handling the latent function
-%   is specified by the function handle 'ss' such that it returns the 
-%   state space model matrices
-%
-%     [F,L,Qc,H,Pinf,dF,dQc,dPinf] = ss(x,theta),
-%
-%   where theta holds the hyperparameters. See the paper [1] for details.
-%     The non-Gaussian likelihood is dealt with using single-sweep EP, also
-%   known as assumed density filtering (ADF). See paper [2] for details.
-%
-%   NOTE: This code is proof-of-concept, not optimized for speed.
+%   TODO
 %
 % References:
 %
-%   [1] Simo Sarkka, Arno Solin, Jouni Hartikainen (2013).
-%       Spatiotemporal learning via infinite-dimensional Bayesian
-%       filtering and smoothing. IEEE Signal Processing Magazine,
-%       30(4):51-61.
-%   [2] Hannes Nickisch, Arno Solin, and Alexander Grigorievskiy (2018). 
-%       State space Gaussian processes with non-Gaussian likelihood. 
+%   [1] William Wilkinson, Michael Riis Andersen, Josh Reiss, Dan Stowell, Arno Solin (2019) 
+%       End-to-End Probabilistic Inference for Nonstationary Audio Analysis. 
 %       International Conference on Machine Learning (ICML). 
 %
-% Copyright:
-%   2014-2018   Arno Solin
-%
-%  This software is distributed under the GNU General Public
-%  License (version 3 or later); please refer to the file
-%  License.txt, included with the software, for details.
+%  This software is distributed under the Apache License, Version 2.0
 
 %% Check defaults
 
@@ -94,6 +77,14 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
   % Form the state space model
   [F,L,Qc,H,Pinf,~,~,~] = ss(x,param1,param2,kernel1,kernel2);
   
+  if true            % balance state space model for improved numerical stability
+    [T,F] = balance(F); L = T\L; H = H*T;                     % balance F,L,Qc,H
+    LL = T\chol(Pinf,'lower'); Pinf = LL*LL';                     % balance Pinf
+%     for j=1:size(dF,3)                                    % balance dF and dPinf
+%       dF(:,:,j) = T\dF(:,:,j)*T; dPinf(:,:,j) = T\dPinf(:,:,j)/T;
+%     end
+  end
+  
   
 %% Prediction of test inputs (filtering and smoothing)
 
@@ -115,10 +106,10 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
     % Discrete-time model
     [A,Q] = lti_disc(F,L,Qc,dt);
     
+    ep_damp = ep_damping(1);
+    
     % Iterate EP
     for itt = 1:ep_itts
-      
-      ep_damp = ep_damping(itt);
       
       % Set initial state
       m = zeros(size(F,1),1);
@@ -163,22 +154,6 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
                   
               end  
               
-              % Commented out the old 1D update specific implementation
-              %{
-              if min(ttau(:,k))==0
-                  z = ttau(:,k).*HPH+1;
-                  K = bsxfun(@times,W,(ttau(:,k)./z)');
-                  v = ttau(:,k).*fmu - tnu(:,k);
-                  m = m - W*(v./z);
-                  P = P - K*W';
-              else
-                  K = bsxfun(@rdivide,W,(HPH+1./ttau(:,k))');
-                  v = tnu(:,k)./ttau(:,k) - fmu;
-                  m = m + K*v;
-                  P = P - K*H*P;
-              end
-              %}
-              
               % Pick which to be updated differently
               ii = (ttau(:,k)==0);
               
@@ -218,6 +193,10 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
       end
       
       % ### Backward smoother and EP step
+      
+      if itt < ep_itts
+        ep_damp = ep_damping(itt+1);
+      end
       
       % Rauch-Tung-Striebel smoother
       for k=size(MS,2)-1:-1:1
@@ -269,8 +248,10 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
                   [lZ(k),dlZ,d2lZ] = mom(lik_param,m_cav,v_cav,Wnmf,ep_fraction,yall,k);
 
                   % Moment matching
-                  ttau(update_idx,k) = (1-ep_damp)*ttau(update_idx, k) + ep_damp/ep_fraction*(-d2lZ(update_idx)'./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
-                  tnu(update_idx,k) = (1-ep_damp)*tnu(update_idx, k) + ep_damp/ep_fraction*((dlZ(update_idx)'-m_cav(update_idx).*d2lZ(update_idx)')./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
+                  ttau(update_idx,k) = (1-ep_damp)*ttau(update_idx, k) + ...
+                                       ep_damp*ep_fraction*(-d2lZ(update_idx)'./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
+                  tnu(update_idx,k) = (1-ep_damp)*tnu(update_idx, k) + ...
+                                      ep_damp*ep_fraction*((dlZ(update_idx)'-m_cav(update_idx).*d2lZ(update_idx)')./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
                   
                   % Enforce positivity->lower bound ttau by zero
                   ttau(:,k) = max(ttau(:,k),0);
@@ -390,10 +371,10 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
 %     Q  = Pinf - A*Pinf*A';
     [A,Q] = lti_disc(F,L,Qc,dt);
     
+    ep_damp = ep_damping(1);
+    
     % Iterate EP
     for itt = 1:ep_itts
-        
-      ep_damp = ep_damping(itt);
       
       % Track convergence (not very optimal)
 %       maxDiffP = 0;
@@ -462,6 +443,8 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
       
       if itt < ep_itts
           % ### Backward smoother and EP step
+          
+            ep_damp = ep_damping(itt+1);
 
             % Rauch-Tung-Striebel smoother
             for k=size(MS,2)-1:-1:1
@@ -510,10 +493,12 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
 
                     % Compute gradients of the normalizer of the tilted dst
                     [lZ(k),dlZ,d2lZ] = mom(lik_param,m_cav,v_cav,Wnmf,ep_fraction,yall,k);
-
+                    
                     % Moment matching
-                    ttau(update_idx,k) = (1-ep_damp)*ttau(update_idx, k) + ep_damp/ep_fraction*(-d2lZ(update_idx)'./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
-                    tnu(update_idx,k) = (1-ep_damp)*tnu(update_idx, k) + ep_damp/ep_fraction*((dlZ(update_idx)'-m_cav(update_idx).*d2lZ(update_idx)')./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
+                    ttau(update_idx,k) = (1-ep_damp)*ttau(update_idx, k) + ...
+                                         ep_damp*ep_fraction*(-d2lZ(update_idx)'./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
+                    tnu(update_idx,k) = (1-ep_damp)*tnu(update_idx, k) + ...
+                                        ep_damp*ep_fraction*((dlZ(update_idx)'-m_cav(update_idx).*d2lZ(update_idx)')./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
 
                 end
 
@@ -526,6 +511,7 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
     %         fprintf('%.02i - max diff in m: %.6g - max diff in P: %.6g - nll: %.6g\n', ...
     %                 itt,maxDiffM,maxDiffP,-sum(lZ))
       end
+      
     end
     
     % Sum up the lik

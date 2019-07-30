@@ -1,5 +1,6 @@
 clear
 addpath('symmetric-cubature-rules/'); % code for approximate Gaussian integrals
+addpath('unifying_prob_tf/');
 
   var_fast = [ 0.1;   0.1];%   0.4];
   len_fast = [ 50.;   40.];%    20];
@@ -18,12 +19,19 @@ addpath('symmetric-cubature-rules/'); % code for approximate Gaussian integrals
   rng(123)
   w_lik = 1e-8; % observation noise
   p_cubature = 9; % order of cubature for Gaussian integral
+  max_iters = 4; % maximum number of iterations
   
-  %%% tune the hyperparameters? %%%
+  %%% tune the hyperparameters? %%% (optimisation still quite unstable)
   optimise = 0;
   
+  ep_fraction = 0.5; % Power EP fraction
+  ep_itts = 3; % EP iterations
+  ep_damping = linspace(0.5, 0.5, ep_itts); % EP damping
+  
+  likfunc = @likModulatorPower;
+  
 
-% State space sampling
+%% State space sampling
 
   w = [var_fast;len_fast;omega;var_slow;len_slow];
   [F,L,Qc,H,Pinf] = ss_modulators(w,kernel1,kernel2);
@@ -68,11 +76,9 @@ addpath('symmetric-cubature-rules/'); % code for approximate Gaussian integrals
   
 
 %% setup and optimisation
-
-  likfunc = @likModulator;
   
   % Moments
-  mom = @(hyp,mu,s2,yall,k) feval(likfunc,link,hyp,yall(k),mu,s2,p_cubature,'infEP');
+  mom = @(hyp,mu,s2,ep_frac,yall,k) feval(likfunc,link,hyp,yall(k),mu,s2,p_cubature,ep_frac,'infEP');
   
   % State space model
   ss = @(x,p,kern1,kern2) ss_modulators(p,kern1,kern2);
@@ -87,10 +93,10 @@ addpath('symmetric-cubature-rules/'); % code for approximate Gaussian integrals
     w = log([w_lik;ones(size(omega));50*ones(size(omega));ones(size(omega));omega;5.*ones(size(omega))]);
   
     % Optimization options
-    opts = optimset('GradObj','off','display','iter','DerivativeCheck','on','MaxIter',10);
+    opts = optimset('GradObj','off','display','iter','DerivativeCheck','off','MaxIter',max_iters);
   
     % Optimize hyperparameters w.r.t. log marginal likelihood
-    [w2,ll] = fminunc(@(w) gf_adf_modulator(w,t,y,ss,mom,[],kernel1,kernel2,num_lik_params), ...
+    [w2,ll] = fminunc(@(w) gf_ep_modulator(w,t,y,ss,mom,[],kernel1,kernel2,num_lik_params,ep_fraction,ep_damping,ep_itts), ...
                            w,opts);
   end
   
@@ -100,14 +106,8 @@ addpath('symmetric-cubature-rules/'); % code for approximate Gaussian integrals
   if exist('w2','var'), w_ = w2; else, w_ = w; end
   % ADF filtering
   tic
-  [Eft,Varft,Covft,lb,ub,out] = gf_ep_modulator(w_,t,y,ss,mom,t,kernel1,kernel2,num_lik_params);
-  toc
-  
-  % GHKF filtering (also feat EKF filter, but commented out)
-  tic
-  %[Eft,Varft,Covft,lb,ub,out] = ckf_modulator(w_,t,y,ss,mom,t,kernel1,kernel2,num_lik_params,link);
-  toc
-  
+  [Eft,Varft,Covft,lb,ub,out] = gf_ep_modulator(w_,t,y,ss,mom,t,kernel1,kernel2,num_lik_params,ep_fraction,ep_damping,ep_itts);
+  toc  
   
   
   Eft_mod = zeros(size(Eft(D+1:end,:)));
@@ -153,4 +153,5 @@ addpath('symmetric-cubature-rules/'); % code for approximate Gaussian integrals
   title('sum product')  
   %%
   fprintf('RMSE: %d \n',sqrt(mean((y-Esig).^2)))
+  fprintf('lZ: %d \n',sum(out.lZ))
   

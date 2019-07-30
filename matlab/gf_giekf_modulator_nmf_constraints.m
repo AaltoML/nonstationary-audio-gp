@@ -1,17 +1,29 @@
 function [varargout] = gf_giekf_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1,kernel2,num_lik_params,D,N,...
                                                           g_iter,l_iter,constraints,w_fixed,tune_hypers,GradObj)
 % gf_giekf_modulator_nmf - Solve NMF model by extended Kalman filtering
+% with constraints
 %
 % Syntax:
-%   [...] = gf_giekf_modulator_nmf(w,x,y,k,xt,...)
+%   [...] = gf_giekf_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1,kernel2,num_lik_params,D,N,ep_fraction,ep_damping,ep_itts)
 %
 % In:
-%   w     - Log-parameters (nu, sigma2, theta)
-%   x     - Training inputs
-%   y     - Training outputs
-%   ss    - State space model function handle, [F,L,Qc,...] = @(x,theta) 
-%   mom   - Moment calculations for ADF
-%   xt    - Test inputs (default: empty)
+%   w              - Log-parameters
+%   x              - Training inputs
+%   y              - Training outputs
+%   ss             - State space model function handle, [F,L,Qc,...] = @(x,theta) 
+%   mom            - Moment calculations for EP (not used)
+%   xt             - Test inputs (default: empty)
+%   kernel1        - kernel for subbands
+%   kernel2        - kernel for modulators
+%   num_lik_params - number of hypers. in likelihood model
+%   D              - number of subbands
+%   N              - number of modulators
+%   g_iter         - number of global EKF iterations
+%   l_iter         - number of local EKF iterations
+%   constraints    - a set of constraints
+%   w_fixed        - the fixed model parameters
+%   tune_hypers    - whether or not we are optimising the parameters
+%   GradObj        - calculate derivatives in closed form?
 %
 % Out (if xt is empty or not supplied):
 %
@@ -27,40 +39,15 @@ function [varargout] = gf_giekf_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel
 %   ub    - 95% confidence upper bound
 %
 % Description:
-%   Consider the following GP model:
-%
-%       f ~ GP(0,k(x,x')),
-%     y_i ~ p(y_i | f(x_i)),  i=1,2,...,n,
-%
-%   where k(x,x') is the prior covariance function. The state space model 
-%   giving you linear time complexity in handling the latent function
-%   is specified by the function handle 'ss' such that it returns the 
-%   state space model matrices
-%
-%     [F,L,Qc,H,Pinf,dF,dQc,dPinf] = ss(x,theta),
-%
-%   where theta holds the hyperparameters. See the paper [1] for details.
-%     The non-Gaussian likelihood is dealt with using single-sweep EP, also
-%   known as assumed density filtering (ADF). See paper [2] for details.
-%
-%   NOTE: This code is proof-of-concept, not optimized for speed.
+%   TODO
 %
 % References:
 %
-%   [1] Simo Sarkka, Arno Solin, Jouni Hartikainen (2013).
-%       Spatiotemporal learning via infinite-dimensional Bayesian
-%       filtering and smoothing. IEEE Signal Processing Magazine,
-%       30(4):51-61.
-%   [2] Hannes Nickisch, Arno Solin, and Alexander Grigorievskiy (2018). 
-%       State space Gaussian processes with non-Gaussian likelihood. 
+%   [1] William Wilkinson, Michael Riis Andersen, Josh Reiss, Dan Stowell, Arno Solin (2019) 
+%       End-to-End Probabilistic Inference for Nonstationary Audio Analysis. 
 %       International Conference on Machine Learning (ICML). 
 %
-% Copyright:
-%   2014-2018   Arno Solin
-%
-%  This software is distributed under the GNU General Public
-%  License (version 3 or later); please refer to the file
-%  License.txt, included with the software, for details.
+%  This software is distributed under the Apache License, Version 2.0
 
 %% Check defaults
 
@@ -123,6 +110,14 @@ function [varargout] = gf_giekf_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel
   
   % Form the state space model
   [F,L,Qc,H,Pinf,dF,dQc,dPinf] = ss(x,param1,param2,kernel1,kernel2);
+  
+  if true            % balance state space model for improved numerical stability
+    [T,F] = balance(F); L = T\L; H = H*T;                     % balance F,L,Qc,H
+    LL = T\chol(Pinf,'lower'); Pinf = LL*LL';                     % balance Pinf
+%     for j=1:size(dF,3)                                    % balance dF and dPinf
+%       dF(:,:,j) = T\dF(:,:,j)*T; dPinf(:,:,j) = T\dPinf(:,:,j)/T;
+%     end
+  end
 
   % Measurement noise variance
   sigma2 = exp(lik_param);

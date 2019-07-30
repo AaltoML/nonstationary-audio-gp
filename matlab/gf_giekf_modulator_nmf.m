@@ -1,20 +1,25 @@
 function [varargout] = gf_giekf_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_lik_params,D,N,...
-                                                  g_iter,l_iter,GradObj)
-                                              
-% NOTE THAT MANUAL GRADIENTS NOT FULLY IMPLEMENTED
-
-% gf_giekf_modulator_nmf - Solve NMF model by iterated extended Kalman filtering
+                                              g_iter,l_iter,GradObj)
+% gf_giekf_modulator_nmf - Solve NMF model by extended Kalman filtering
 %
 % Syntax:
-%   [...] = gf_giekf_modulator_nmf(w,x,y,k,xt,...)
+%   [...] = gf_giekf_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_lik_params,D,N,ep_fraction,ep_damping,ep_itts)
 %
 % In:
-%   w     - Log-parameters (nu, sigma2, theta)
-%   x     - Training inputs
-%   y     - Training outputs
-%   ss    - State space model function handle, [F,L,Qc,...] = @(x,theta) 
-%   mom   - Moment calculations for ADF
-%   xt    - Test inputs (default: empty)
+%   w              - Log-parameters
+%   x              - Training inputs
+%   y              - Training outputs
+%   ss             - State space model function handle, [F,L,Qc,...] = @(x,theta) 
+%   mom            - Moment calculations for EP (not used)
+%   xt             - Test inputs (default: empty)
+%   kernel1        - kernel for subbands
+%   kernel2        - kernel for modulators
+%   num_lik_params - number of hypers. in likelihood model
+%   D              - number of subbands
+%   N              - number of modulators
+%   g_iter         - number of global EKF iterations
+%   l_iter         - number of local EKF iterations
+%   GradObj        - calculate derivatives in closed form?
 %
 % Out (if xt is empty or not supplied):
 %
@@ -30,47 +35,20 @@ function [varargout] = gf_giekf_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,nu
 %   ub    - 95% confidence upper bound
 %
 % Description:
-%   Consider the following GP model:
-%
-%       f ~ GP(0,k(x,x')),
-%     y_i ~ p(y_i | f(x_i)),  i=1,2,...,n,
-%
-%   where k(x,x') is the prior covariance function. The state space model 
-%   giving you linear time complexity in handling the latent function
-%   is specified by the function handle 'ss' such that it returns the 
-%   state space model matrices
-%
-%     [F,L,Qc,H,Pinf,dF,dQc,dPinf] = ss(x,theta),
-%
-%   where theta holds the hyperparameters. See the paper [1] for details.
-%     The non-Gaussian likelihood is dealt with using single-sweep EP, also
-%   known as assumed density filtering (ADF). See paper [2] for details.
-%
-%   NOTE: This code is proof-of-concept, not optimized for speed.
+%   TODO
 %
 % References:
 %
-%   [1] Simo Sarkka, Arno Solin, Jouni Hartikainen (2013).
-%       Spatiotemporal learning via infinite-dimensional Bayesian
-%       filtering and smoothing. IEEE Signal Processing Magazine,
-%       30(4):51-61.
-%   [2] Hannes Nickisch, Arno Solin, and Alexander Grigorievskiy (2018). 
-%       State space Gaussian processes with non-Gaussian likelihood. 
+%   [1] William Wilkinson, Michael Riis Andersen, Josh Reiss, Dan Stowell, Arno Solin (2019) 
+%       End-to-End Probabilistic Inference for Nonstationary Audio Analysis. 
 %       International Conference on Machine Learning (ICML). 
 %
-% Copyright:
-%   2014-2018   Arno Solin
-%
-%  This software is distributed under the GNU General Public
-%  License (version 3 or later); please refer to the file
-%  License.txt, included with the software, for details.
+%  This software is distributed under the Apache License, Version 2.0
 
 %% Check defaults
 
   % Is there test data
   if nargin < 6, xt = []; end
-  if nargin < 14, GradObj = 'off'; end
-  if ~strcmp(GradObj,'off'), error('use of manual gradients not implemented'); end
    
   
 %% Figure out the correct way of dealing with the data
@@ -89,7 +67,6 @@ function [varargout] = gf_giekf_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,nu
   
 %% Set up model
 
-  % Log transformed parameters
   lik_param = w(1:num_lik_params);
   param1 = exp(w(num_lik_params+1:num_lik_params+3*D));
   param2 = exp(w(num_lik_params+3*D+1:num_lik_params+3*D+2*N));
@@ -97,15 +74,23 @@ function [varargout] = gf_giekf_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,nu
   
   % Form the state space model
   [F,L,Qc,H,Pinf,dF,dQc,dPinf] = ss(x,param1,param2,kernel1,kernel2);
+  
+  if true            % balance state space model for improved numerical stability
+    [T,F] = balance(F); L = T\L; H = H*T;                     % balance F,L,Qc,H
+    LL = T\chol(Pinf,'lower'); Pinf = LL*LL';                     % balance Pinf
+%     for j=1:size(dF,3)                                    % balance dF and dPinf
+%       dF(:,:,j) = T\dF(:,:,j)*T; dPinf(:,:,j) = T\dPinf(:,:,j)/T;
+%     end
+  end
 
   % Measurement noise variance
   sigma2 = exp(lik_param);
   R = sigma2;
   
   % Concatenate derivatives
-  dF    = cat(3,cat(3,zeros(size(F)),dF),zeros([size(F),D*N]));
-  dQc   = cat(3,cat(3,zeros(size(Qc)),dQc),zeros([size(Qc),D*N]));
-  dPinf = cat(3,cat(3,zeros(size(Pinf)),dPinf),zeros([size(Pinf),D*N]));
+  dF    = cat(3,zeros(size(F)),dF);
+  dQc   = cat(3,zeros(size(Qc)),dQc);
+  dPinf = cat(3,zeros(size(Pinf)),dPinf);
   dR    = zeros(1,1,size(dF,3)); dR(1) = 1;
   
   % Measurement model
@@ -143,14 +128,13 @@ function [varargout] = gf_giekf_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,nu
       % Set initial state
       if itt==1         
         m = zeros(size(F,1),1);
+        P = Pinf;
       end
-      P = Pinf;
+      
  
       % Track convergence (not very optimal)
       maxDiffP = 0;
-      maxDiffM = 0;
       PSP = PS;
-      MSP = MS;
       
       % ### Forward filter
       for k=1:numel(yall)
@@ -162,7 +146,10 @@ function [varargout] = gf_giekf_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,nu
           end
           
           % Update step
-          if ~isnan(yall(k))             
+          if ~isnan(yall(k))
+              
+              % Latent marginal, cavity distribution
+              fmu = H*m; W = P*H'; HPH = diag(H*P*H');
               
               % Check derivative
               %[D0,D1] = der_check(@(x) handle(x,[]),@(x) dhandle(x,[]),1,10*randn(size(m)))
@@ -224,16 +211,12 @@ function [varargout] = gf_giekf_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,nu
           MS(:,k)   = m;
           PS(:,:,k) = P;
           
-          % Max diff in m and P
-          maxDiffM = max(maxDiffM,max(max(abs(H*MSP(:,k)-H*m))));
+          % Max diff in P
           maxDiffP = max(maxDiffP,max(max(abs(H*PSP(:,:,k)*H'-H*P*H'))));
           
       end % end smoother iteration
     
-      if itt < g_iter
-        fprintf('%.02i - max diff in m: %.6g - max diff in P: %.6g\n', ...
-            itt,maxDiffM,maxDiffP)
-      end
+      maxDiffP
       %ll=-sum(lZ)
       
     end % end EKF iteration
@@ -332,10 +315,14 @@ function [varargout] = gf_giekf_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,nu
     dt = 1;
     
     % Discrete-time model
-%     [A,Q] = lti_disc(F,L,Qc,dt);
+    [A,Q] = lti_disc(F,L,Qc,dt);
+    
+    if strcmp(GradObj,'off')
+        nparam = 0;
+    end
   
     % Allocate space for expm results
-    AA = zeros(2*d,2*d,nparam);
+    AA = zeros(2*d,2*d,max(nparam,1));
     
     % Loop through all parameters (Kalman filter prediction step)
     for j=1:nparam
@@ -349,13 +336,6 @@ function [varargout] = gf_giekf_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,nu
         
     end
     
-    A = AA(1:d,1:d,1);
-    Q  = Pinf - A*Pinf*A';
-    
-    if strcmp(GradObj,'off')
-        nparam = 0;
-    end
-    
     % Loop over all observations
     for k=1:steps
         
@@ -363,7 +343,16 @@ function [varargout] = gf_giekf_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,nu
         for j=1:nparam
            
             % Solve the differential equation
-            dm(:,j) = AA(d+(1:d),:,j)*[m; dm(:,j)];
+            foo     = AA(:,:,j)*[m; dm(:,j)];
+            mm      = foo(1:d,:);
+            dm(:,j) = foo(d+(1:d),:);
+            
+            % The discrete-time dynamical model
+            if (j==1)
+                A  = AA(1:d,1:d,j);
+                Q  = Pinf - A*Pinf*A';
+                PP = A*P*A' + Q;
+            end
             
             % The derivatives of A and Q
             dA = AA(d+1:end,1:d,j);
@@ -377,8 +366,8 @@ function [varargout] = gf_giekf_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,nu
         end
         
         % Set predicted m and P
-        m = A*m;
-        P = A*P*A' + Q;
+        m = mm;
+        P = PP;
         
         % Evaluate measurement model
         mu = handle(m,[]);
@@ -386,14 +375,11 @@ function [varargout] = gf_giekf_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,nu
         dJH = d2handle(m,[]);
         
         % Start the Kalman filter update step and precalculate variables
-        
         S = JH*P*JH' + R;
-        
         [LS,notposdef] = chol(S,'lower');
         
         % If matrix is not positive definite, add jitter
         if notposdef>0
-            jitterSigma2 = 1e-4;
             jitter = jitterSigma2*diag(rand(size(S,1),1));
             [LS,notposdef] = chol(S+jitter,'lower');
             
@@ -414,17 +400,9 @@ function [varargout] = gf_giekf_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,nu
         % Loop through all parameters (Kalman filter update step derivative)
         for j=1:nparam
             
-            % Innovation covariance derivative
-            if j <= nparam - D*N
-                dmdJH = dm(:,j)'*dJH;
-            else
-                W_ = zeros(size(Wnmf));
-                W_(j - nparam + D*N) = 1;
-                dmdJH = funhd(m,H,linkf,dlinkf,D,N,W_);
-%                 dmdJH'
-%                 keyboard
-            end
+            dmdJH = dm(:,j)'*dJH;
             
+            % Innovation covariance derivative
             dS = dmdJH*P*JH' + JH*dP(:,:,j)*JH' + JH*P*dmdJH' + dR(:,:,j);
             
             % Evaluate the energy derivative for j (optimized from above)
@@ -448,19 +426,18 @@ function [varargout] = gf_giekf_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,nu
         % Finish Kalman filter update step
         m = m + K*v;
         P = P - K*S*K';        
-%         keyboard
         
     end
     
     % Account for log-scale
-%     ww = w(1:end-D*N);
-    ww = w(1:end);
+    ww = w(1:end-D*N);
     gdata = gdata.*exp(ww(:)');
     
     % Return negative log marginal likelihood and gradient
     varargout = {edata,gdata};
 
   end
+  
   
 end
 
@@ -474,9 +451,10 @@ end
 % For EKF
 function [dy] = funhd(x,H,linkf,dlinkf,D,N,W)
 
-  partials = [W * linkf(H(D+1:D+N,:) * x); ...
+  dy = zeros(1,size(H,2));
+  foo = [W * linkf(H(D+1:D+N,:) * x); ...
          diag((H(1:D,:) * x)' * W) * dlinkf(H(D+1:D+N,:) * x)];
-  dy = partials'*H;
+  dy(sum(H,1)==1) = foo(:);
   
 end
   
@@ -484,9 +462,13 @@ function [d2y] = funhd2(x,H,linkf,dlinkf,d2linkf,D,N,W)
 
   z = H(1:D,:) * x;
   g = H(D+1:D+N,:) * x;
-  partials = [zeros(size(z,1)),            W.*(ones(D,1)*dlinkf(g)'); ...
+  y = z' * W * linkf(g);
+  d2y = zeros(length(x),size(H,2));
+  
+  foo2 = [zeros(size(z,1)),            W.*(ones(D,1)*dlinkf(g)');     ...
           (W.*(ones(D,1)*dlinkf(g)'))', diag((z'*W)' .* d2linkf(g))];
-  d2y = H'*partials*H;
+      
+  d2y(sum(H,1)==1,sum(H,1)==1) = foo2;
   
 end
   

@@ -7,25 +7,29 @@ soundPath = '../audio/speech/'; % Specify where to load the data from
   % load signal
   File = 'speech0_female'; % Name of file to load
 %   File = 'stim312_wind'; % Name of file to load
-  fs_ = 16000; % sampling rate of file
+  fs_ = 24000; % sampling rate of file
   
-  D = 10; % number of frequency channels
+  D = 12; % number of frequency channels
   N = 3; % number of NMF components
   dt = 1;
   kernel1 = 'exp'; % kernel for subbands
   kernel2 = 'matern52'; % kernel for amplitude envelopes
-  T = 16000;
+  T = 24000; % max length of signal
   t = linspace(1,T,T)';
   mod_sparsity = 0.; % 0 = softplus
   link = @(g) log(1+exp(g-mod_sparsity)); % link function
 %   link = @(g) exp(g);
   rng(12345)
   w_lik = 1e-3; % observation noise
-  p_cubature = 7; % order of cubature for Gaussian integral
-  max_iters = 10; % maximum number of iterations
+  p_cubature = 9; % order of cubature for Gaussian integral
+  max_iters = 5; % maximum number of iterations
   
-  %%% tune the hyperparameters? %%%
+  %%% tune the hyperparameters? %%% (optimisation still quite unstable)
   optimise = 0;
+  
+  ep_fraction = 0.5; % Power EP fraction
+  ep_itts = 3; % EP iterations
+  ep_damping = linspace(0.5, 0.5, ep_itts); % EP damping
   
   
 %% Load signal and pre-process
@@ -165,13 +169,6 @@ end
   
   likfunc = @likModulatorNMFPower;
   
-  ep_fraction = 1;%0.6 % Power EP fraction
-  
-  ep_itts = 10; % EP iterations
-  
-  ep_damping = linspace(0.1, 0.5, ep_itts);%0.1; % EP damping
-  ep_damping(1) = 0.5;
-  
   l_iter = 1; % local EKF (inner loop) iterations
   
   % Moments
@@ -211,7 +208,6 @@ end
    [Eft,Varft,Covft,lb,ub,out] = gf_ep_modulator_nmf(w_,t,yTest,ss,mom,t,kernel1,kernel2,num_lik_params,D,N,ep_fraction,ep_damping,ep_itts);
    % other inference methods:
 %    [Eft,Varft,Covft,lb,ub,out] = gf_giekf_modulator_nmf(w_,t,yTest,ss,mom,t,kernel1,kernel2,num_lik_params,D,N,ep_itts,l_iter);
-%    [Eft,Varft,Covft,lb,ub,out] = gf_giekf_modulator_nmf_fixW(w_,t,yTest,ss,mom,t,kernel1,kernel2,num_lik_params,D,N,ep_itts,l_iter,W);
 %    [Eft,Varft,Covft,lb,ub,out] = ihgp_ep_modulator_nmf(w_,t,yTest,ss,mom,t,kernel1,kernel2,num_lik_params,D,N,ep_fraction,ep_damping,ep_itts);
    
   toc
@@ -278,6 +274,7 @@ end
   title('signal (via NMF)')
   
   fprintf('RMSE: %d \n',sqrt(mean((yTest-Esig).^2)))
+  fprintf('lZ: %d \n',sum(out.lZ))
   
   var_fast_opt = exp(w_(2:D+1));
   len_fast_opt = exp(w_(D+2:2*D+1));
@@ -293,4 +290,4 @@ end
       error('mapping not implemented')
   end
   %%
-  plot_pSTFT_kern_cts(var_fast_opt,omega_opt,lam_fast_opt,kernel1,1,1,4)
+  plot_pSTFT_kern_cts(var_fast_opt,omega_opt,lam_fast_opt,kernel1,1,1,4);

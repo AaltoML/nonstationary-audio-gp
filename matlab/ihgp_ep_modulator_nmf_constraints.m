@@ -1,17 +1,29 @@
 function [varargout] = ihgp_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1,kernel2,num_lik_params,D,N,...
                                                           ep_fraction,ep_damping,ep_itts,constraints,w_fixed,tune_hypers)
-% IHGP_ADF - Infinite-horizon GP with single-sweep EP (ADF)
+% IHGP_EP - Solve time-frequency-NMF GP model by Power EP with an Infinite
+% Horizon GP approximation with constraints
 %
 % Syntax:
-%   [...] = ihgp_adf(w,x,y,k,xt)
+%   [...] = ihgp_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1,kernel2,num_lik_params,D,N,ep_fraction,ep_damping,ep_itts)
 %
 % In:
-%   w     - Log-parameters (nu, sigma2, theta)
-%   x     - Training inputs
-%   y     - Training outputs
-%   ss    - State space model function handle, [F,L,Qc,...] = @(x,theta) 
-%   mom   - Moment calculations for ADF
-%   xt    - Test inputs (default: empty)
+%   w              - Log-parameters
+%   x              - Training inputs
+%   y              - Training outputs
+%   ss             - State space model function handle, [F,L,Qc,...] = @(x,theta) 
+%   mom            - Moment calculations for EP
+%   xt             - Test inputs (default: empty)
+%   kernel1        - kernel for subbands
+%   kernel2        - kernel for modulators
+%   num_lik_params - number of hypers. in likelihood model
+%   D              - number of subbands
+%   N              - number of modulators
+%   ep_fraction    - the power in Power EP
+%   ep_damping     - how much to damp the EP updates
+%   ep_itts        - number of EP iterations
+%   constraints    - a set of constraints
+%   w_fixed        - the fixed model parameters
+%   tune_hypers    - whether or not we are optimising the parameters
 %
 % Out (if xt is empty or not supplied):
 %
@@ -22,43 +34,20 @@ function [varargout] = ihgp_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1
 %
 %   Eft   - Predicted mean
 %   Varft - Predicted marginal variance
-%   Covft - Predicted joint covariance matrix (disabled output)
+%   Covft - Predicted joint covariance matrix (not used here)
 %   lb    - 95% confidence lower bound
 %   ub    - 95% confidence upper bound
 %
 % Description:
-%   Consider the general GP modelling problem:
-%
-%     f(t) ~ GP(0,k(x,x')),
-%      y_i ~ p(y_i | f(x_i)),  i=1,2,...,n,
-%
-%   where k(x,x') = k_theta(x,x'). This function performs assumed density
-%   filtering (ADF) / single-sweep expectation propagtaion for dealing with
-%   non-Gaussian likelihoods (observation models).
-%
-%   The state space model is specified by the function handle 'ss' such
-%   that it returns the state space model matrices
-%
-%     [F,L,Qc,H,Pinf,dF,dQc,dPinf] = ss(x,theta),
-%
-%   where theta holds the hyperparameters. See the paper for details.
-%   This code is assuming a stationary covariance function even though the
-%   methodology per se does not require it.
-%
-%   NOTE: This code is proof-of-concept, not optimized for speed.
+%   TODO
 %
 % References:
 %
-%   [1] Arno Solin, James Hensman, and Richard E. Turner (2018). 
-%       Infinite-horizon Gaussian processes. Advances in Neural 
-%       Information Processing Systems (NIPS). Montreal, Canada. 
+%   [1] William Wilkinson, Michael Riis Andersen, Josh Reiss, Dan Stowell, Arno Solin (2019) 
+%       End-to-End Probabilistic Inference for Nonstationary Audio Analysis. 
+%       International Conference on Machine Learning (ICML). 
 %
-% Copyright:
-%   2018 Arno Solin
-%
-%  This software is distributed under the GNU General Public
-%  License (version 3 or later); please refer to the file
-%  License.txt, included with the software, for details.
+%  This software is distributed under the Apache License, Version 2.0
 
 %%% Check defaults
 
@@ -124,6 +113,13 @@ function [varargout] = ihgp_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1
   % Form the state space model
   [F,L,Qc,H,Pinf] = ss(x,param1,param2,kernel1,kernel2);
   
+  if true            % balance state space model for improved numerical stability
+    [T,F] = balance(F); L = T\L; H = H*T;                     % balance F,L,Qc,H
+    LL = T\chol(Pinf,'lower'); Pinf = LL*LL';                     % balance Pinf
+%     for j=1:size(dF,3)                                    % balance dF and dPinf
+%       dF(:,:,j) = T\dF(:,:,j)*T; dPinf(:,:,j) = T\dPinf(:,:,j)/T;
+%     end
+  end
   
 %% Solve a bunch of DAREs
 
@@ -252,11 +248,11 @@ function [varargout] = ihgp_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1
 %     dt = 1;
     
     % ### Forward filter
-
+    
+    ep_damp = ep_damping(1);
+    
     % Iterate EP
     for itt = 1:ep_itts
-        
-        ep_damp = ep_damping(itt);
         
         lZ = 0;
         
@@ -290,9 +286,8 @@ function [varargout] = ihgp_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1
                   
                 % Propagate moments through likelihood
                 [lZ_k,dlZ,d2lZ] = mom(lik_param,fmu,HPH,Wnmf,1,yall,k);
-                lZ = lZ + lZ_k;
-                
-      
+                lZ = lZ + lZ_k;         
+
                 % Perform moment matching
                 ttau(:,k) = (1-ep_damp)*ttau(:, k) + ep_damp*(-d2lZ'./(1+d2lZ'.*HPH));
                 tnu(:,k) = (1-ep_damp)*tnu(:, k) + ep_damp*((dlZ'-fmu.*d2lZ')./(1+d2lZ'.*HPH));
@@ -394,6 +389,11 @@ function [varargout] = ihgp_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1
         G = zeros(size(A));
 
         % Rauch-Tung-Striebel smoother
+        
+        if itt < ep_itts
+            ep_damp = ep_damping(itt+1);
+        end
+        
         for k=size(MS,2)-1:-1:1
             if mod(size(MS,2)-k,16000) == 0
                 fprintf('smoothing step %i / %i \n',size(MS,2)-k,numel(yall));
@@ -449,8 +449,10 @@ function [varargout] = ihgp_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1
                   end
 
                   % Moment matching
-                  ttau(update_idx, k) = (1-ep_damp)*ttau(update_idx, k) + ep_damp/ep_fraction*(-d2lZ_(update_idx)'./(1+d2lZ_(update_idx)'.*v_cav(update_idx)));
-                  tnu(update_idx,k) = (1-ep_damp)*tnu(update_idx, k) + ep_damp/ep_fraction*((dlZ_(update_idx)'-m_cav(update_idx).*d2lZ_(update_idx)')./(1+d2lZ_(update_idx)'.*v_cav(update_idx)));
+                  ttau(update_idx,k) = (1-ep_damp)*ttau(update_idx, k) + ...
+                                       ep_damp*ep_fraction*(-d2lZ_(update_idx)'./(1+d2lZ_(update_idx)'.*v_cav(update_idx)));
+                  tnu(update_idx,k) = (1-ep_damp)*tnu(update_idx, k) + ...
+                                      ep_damp*ep_fraction*((dlZ_(update_idx)'-m_cav(update_idx).*d2lZ_(update_idx)')./(1+d2lZ_(update_idx)'.*v_cav(update_idx)));
 
                   % This is the equivalent measurement noise
                   R(update_idx,k) = 1 ./ ttau(update_idx,k); %-(1+d2lZ_'.*v_cav)./d2lZ_';
@@ -543,6 +545,8 @@ function [varargout] = ihgp_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1
   
 %% Evaluate negative log marginal likelihood and its gradient
 
+% TODO: implement EP iteration for IHGP training
+
   if isempty(xt)
       
     ep_damp = ep_damping(1);
@@ -588,8 +592,8 @@ function [varargout] = ihgp_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1
         [lZ_k,dlZ,d2lZ] = mom(lik_param,fmu,HPH,Wnmf,1,yall,k);
         lZ = lZ + lZ_k;
         % Perform moment matching
-%         ttau(:,k) = (1-ep_damping/ep_fraction)*ttau(:,k) + ep_damping/ep_fraction*(-d2lZ'./(1+d2lZ'.*HPH));
-%         tnu(:,k) = (1-ep_damping/ep_fraction)*tnu(:,k) + ep_damping/ep_fraction*((dlZ'-fmu.*d2lZ')./(1+d2lZ'.*HPH));
+%         ttau(:,k) = (1-ep_damping)*ttau(:,k) + ep_damping*(-d2lZ'./(1+d2lZ'.*HPH));
+%         tnu(:,k) = (1-ep_damping)*tnu(:,k) + ep_damping*((dlZ'-fmu.*d2lZ')./(1+d2lZ'.*HPH));
         ttau = (1-ep_damp)*ttau + ep_damp*(-d2lZ'./(1+d2lZ'.*HPH));
         tnu = (1-ep_damp)*tnu + ep_damp*((dlZ'-fmu.*d2lZ')./(1+d2lZ'.*HPH));
         
