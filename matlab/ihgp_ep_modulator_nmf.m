@@ -207,6 +207,8 @@ function [varargout] = ihgp_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num
 %     lZ = zeros(1,size(yall,1));
 %     R = zeros(D+N,size(yall,1));
     R = exp(lik_param) .* ones(D+N,size(yall,1));
+    
+    nlZ = zeros(1,ep_itts);
 
     ys = nan(D+N,size(yall,1));
     
@@ -252,7 +254,12 @@ function [varargout] = ihgp_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num
                   
                 % Propagate moments through likelihood
                 [lZ_k,dlZ,d2lZ] = mom(lik_param,fmu,HPH,Wnmf,1,yall,k);
-                lZ = lZ + lZ_k;               
+                lZ = lZ + lZ_k;
+                if ~isreal(dlZ)
+                    warning('moment matching resulted in complex values')
+                    dlZ = real(dlZ);
+                    d2lZ = real(d2lZ);
+                end
       
                 % Perform moment matching
                 ttau(:,k) = (1-ep_damp)*ttau(:, k) + ep_damp*(-d2lZ'./(1+d2lZ'.*HPH));
@@ -301,7 +308,10 @@ function [varargout] = ihgp_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num
     %         PS(:,:,k) = P;
 
         end
-
+        
+        if itt == 1
+            nlZ(1) = -sum(lZ);
+        end
 
         % Output debugging info
         if nargout>5
@@ -406,19 +416,19 @@ function [varargout] = ihgp_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num
                   % only update a subset.
                 
                   % Compute gradients of the normalizer of the tilted dst
-                  [lZ_k,dlZ_,d2lZ_] = mom(lik_param,m_cav,v_cav,Wnmf,ep_fraction,yall,k);
+                  [lZ_k,dlZ,d2lZ] = mom(lik_param,m_cav,v_cav,Wnmf,ep_fraction,yall,k);
                   if itt > 1, lZ = lZ + lZ_k; end
-                  if ~isreal(dlZ_)
+                  if ~isreal(dlZ)
                       warning('moment matching resulted in complex values')
-                      dlZ_ = real(dlZ_);
-                      d2lZ_ = real(d2lZ_);
+                      dlZ = real(dlZ);
+                      d2lZ = real(d2lZ);
                   end
                   
                   % Moment matching
-                  ttau(update_idx,k) = (1-ep_damp)*ttau(update_idx, k) + ...
-                                       ep_damp*ep_fraction*(-d2lZ_(update_idx)'./(1+d2lZ_(update_idx)'.*v_cav(update_idx)));
-                  tnu(update_idx,k) = (1-ep_damp)*tnu(update_idx, k) + ...
-                                      ep_damp*ep_fraction*((dlZ_(update_idx)'-m_cav(update_idx).*d2lZ_(update_idx)')./(1+d2lZ_(update_idx)'.*v_cav(update_idx)));
+                  ttau(update_idx,k) = (1-ep_damp*ep_fraction)*ttau(update_idx, k) + ...
+                                       ep_damp*ep_fraction*(-d2lZ(update_idx)'./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
+                  tnu(update_idx,k) = (1-ep_damp*ep_fraction)*tnu(update_idx, k) + ...
+                                      ep_damp*ep_fraction*((dlZ(update_idx)'-m_cav(update_idx).*d2lZ(update_idx)')./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
 
                   % This is the equivalent measurement noise
                   R(update_idx,k) = 1 ./ ttau(update_idx,k); %-(1+d2lZ_'.*v_cav)./d2lZ_';
@@ -434,9 +444,11 @@ function [varargout] = ihgp_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num
         maxDiffP = max(max(abs(H*PSP*H'-H*P*H')));
         
         if itt < ep_itts
-          fprintf('%.02i - max diff in m: %.6g - max diff in P: %.6g - nll: %.6g\n', ...
-                  itt,maxDiffM,maxDiffP,-lZ)
+            nlZ(itt+1) = -sum(lZ);
         end
+    
+        fprintf('%.02i - max diff in m: %.6g - max diff in P: %.6g - nll: %.6g\n', ...
+                itt,maxDiffM,maxDiffP,nlZ(itt))
     
         
     end  % end EP iteration
@@ -478,13 +490,17 @@ function [varargout] = ihgp_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num
     % Return variance
     if nargout > 1
         Varft = repmat(diag(H*P*H'),[1,size(MS,2)]);
+        if any(any(Varft))
+            warning('some posterior marginal variances are negative, taking abs()')
+            Varft = abs(Varft);
+        end
         varargout = {Eft,Varft};
     else
         varargout = {Eft};
     end
     
     
- 
+    
     % Also return joint covariance and upper/lower 95% bounds
     if nargout > 3
         

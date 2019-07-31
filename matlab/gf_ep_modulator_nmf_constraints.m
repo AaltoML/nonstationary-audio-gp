@@ -134,6 +134,7 @@ function [varargout] = gf_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1,k
     
     lZ = zeros(1,size(yall,1));
     R = zeros(D+N,size(yall,1));
+    nlZ = zeros(1,ep_itts);
     
     % Time step, dt
     dt = 1;
@@ -233,6 +234,10 @@ function [varargout] = gf_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1,k
           
       end
       
+      if itt == 1
+          nlZ(1) = -sum(lZ);
+      end
+      
       % Output debugging info
       if nargout>5
           out.tnu = tnu;
@@ -320,9 +325,11 @@ function [varargout] = gf_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1,k
       end % end smoother iteration
     
       if itt < ep_itts
-        fprintf('%.02i - max diff in m: %.6g - max diff in P: %.6g - nll: %.6g\n', ...
-            itt,maxDiffM,maxDiffP,-sum(lZ))
+          nlZ(itt+1) = -sum(lZ);
       end
+    
+      fprintf('%.02i - max diff in m: %.6g - max diff in P: %.6g - nll: %.6g\n', ...
+            itt,maxDiffM,maxDiffP,nlZ(itt))
       
     end % end EP iteration
     
@@ -546,9 +553,9 @@ function [varargout] = gf_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1,k
                     [lZ(k),dlZ,d2lZ] = mom(lik_param,m_cav,v_cav,Wnmf,ep_fraction,yall,k);
 
                     % Moment matching
-                    ttau(update_idx,k) = (1-ep_damp)*ttau(update_idx, k) + ...
+                    ttau(update_idx,k) = (1-ep_damp*ep_fraction)*ttau(update_idx, k) + ...
                                          ep_damp*ep_fraction*(-d2lZ(update_idx)'./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
-                    tnu(update_idx,k) = (1-ep_damp)*tnu(update_idx, k) + ...
+                    tnu(update_idx,k) = (1-ep_damp*ep_fraction)*tnu(update_idx, k) + ...
                                         ep_damp*ep_fraction*((dlZ(update_idx)'-m_cav(update_idx).*d2lZ(update_idx)')./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
 
                 end

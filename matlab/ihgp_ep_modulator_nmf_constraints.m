@@ -241,6 +241,7 @@ function [varargout] = ihgp_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1
         
 %     lZ = zeros(1,size(yall,1));
     R = zeros(D+N,size(yall,1));
+    nlZ = zeros(1,ep_itts);
 
     ys = nan(D+N,size(yall,1));
     
@@ -335,7 +336,10 @@ function [varargout] = ihgp_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1
     %         PS(:,:,k) = P;
 
         end
-
+        
+        if itt == 1
+            nlZ(1) = -sum(lZ);
+        end
 
         % Output debugging info
         if nargout>5
@@ -449,9 +453,9 @@ function [varargout] = ihgp_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1
                   end
 
                   % Moment matching
-                  ttau(update_idx,k) = (1-ep_damp)*ttau(update_idx, k) + ...
+                  ttau(update_idx,k) = (1-ep_damp*ep_fraction)*ttau(update_idx, k) + ...
                                        ep_damp*ep_fraction*(-d2lZ_(update_idx)'./(1+d2lZ_(update_idx)'.*v_cav(update_idx)));
-                  tnu(update_idx,k) = (1-ep_damp)*tnu(update_idx, k) + ...
+                  tnu(update_idx,k) = (1-ep_damp*ep_fraction)*tnu(update_idx, k) + ...
                                       ep_damp*ep_fraction*((dlZ_(update_idx)'-m_cav(update_idx).*d2lZ_(update_idx)')./(1+d2lZ_(update_idx)'.*v_cav(update_idx)));
 
                   % This is the equivalent measurement noise
@@ -468,9 +472,11 @@ function [varargout] = ihgp_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1
         maxDiffP = max(max(abs(H*PSP*H'-H*P*H')));
         
         if itt < ep_itts
-          fprintf('%.02i - max diff in m: %.6g - max diff in P: %.6g - nll: %.6g\n', ...
-                  itt,maxDiffM,maxDiffP,-lZ)
+            nlZ(itt+1) = -sum(lZ);
         end
+    
+        fprintf('%.02i - max diff in m: %.6g - max diff in P: %.6g - nll: %.6g\n', ...
+                itt,maxDiffM,maxDiffP,nlZ(itt))
         
     end  % end EP iteration
     
