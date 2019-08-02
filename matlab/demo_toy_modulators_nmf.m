@@ -118,7 +118,7 @@ addpath('symmetric-cubature-rules/'); % code for approximate Gaussian integrals
   
   Eft_mod = zeros(size(Eft(D+1:end,:)));
   Varft_mod = zeros(size(Varft(D+1:end,:)));
-  s = 500;
+  s = 250;
   sub_samp = zeros([size(Eft(1:D,:)),s]);
   mod_samp = zeros([size(Eft(D+1:end,:)),s]);
   

@@ -222,7 +222,7 @@ end
   
   Eft_mod = zeros(size(Eft(D+1:end,:)));
   Varft_mod = zeros(size(Varft(D+1:end,:)));
-  s = 1000;
+  s = 250;
   sub_samp = zeros([size(Eft(1:D,:)),s]);
   mod_samp = zeros([size(Eft(D+1:end,:)),s]);
   

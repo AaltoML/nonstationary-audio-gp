@@ -263,13 +263,13 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
                   
                   % This is the equivalent measurement noise
                   R(:,k) = 1 ./ ttau(:,k); %-(1+d2lZ_'.*v_cav)./d2lZ_';
-
-                  % Max diff in m and P
-                  maxDiffM = max(maxDiffM,max(max(abs(H*MSP(:,k)-H*m))));
-                  maxDiffP = max(maxDiffP,max(max(abs(H*PSP(:,:,k)*H'-H*P*H'))));
                   
               end
           end
+          
+          % Max diff in m and P
+          maxDiffM = max(maxDiffM,max(max(abs(H*MSP(:,k)-H*m))));
+          maxDiffP = max(maxDiffP,max(max(abs(H*PSP(:,:,k)*H'-H*P*H'))));
           
       end % end smoother iteration
       

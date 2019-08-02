@@ -460,12 +460,11 @@ function [varargout] = ihgp_ep_modulator_nmf_constraints(w,x,y,ss,mom,xt,kernel1
 
                   % This is the equivalent measurement noise
                   R(update_idx,k) = 1 ./ ttau(update_idx,k); %-(1+d2lZ_'.*v_cav)./d2lZ_';
-                  % Max diff in m and P
-                  
-                  maxDiffM = max(maxDiffM,max(max(abs(H*MSP(:,k)-H*m))));
 
                 end
             end
+            % Max diff in m and P
+            maxDiffM = max(maxDiffM,max(max(abs(H*MSP(:,k)-H*m))));
         
         end  % end smoother
         
