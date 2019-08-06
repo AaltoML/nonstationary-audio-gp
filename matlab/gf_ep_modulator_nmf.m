@@ -77,7 +77,7 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
   % Form the state space model
   [F,L,Qc,H,Pinf,~,~,~] = ss(x,param1,param2,kernel1,kernel2);
   
-  if true            % balance state space model for improved numerical stability
+  if false            % balance state space model for improved numerical stability
     [T,F] = balance(F); L = T\L; H = H*T;                     % balance F,L,Qc,H
     LL = T\chol(Pinf,'lower'); Pinf = LL*LL';                     % balance Pinf
 %     for j=1:size(dF,3)                                    % balance dF and dPinf
@@ -241,7 +241,7 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
                   % Get marginal
                   m_marginal = H*m;
                   v_marginal = diag(H*P*H');
-
+                  
                   % Compute cavity
                   v_cav = 1./(1./v_marginal - ep_fraction*ttau(:, k));
                   m_cav = v_cav.*(m_marginal./v_marginal - ep_fraction*tnu(:, k));
@@ -254,9 +254,9 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
 
                   % Moment matching
                   ttau(update_idx,k) = (1-ep_damp*ep_fraction)*ttau(update_idx, k) + ...
-                                       ep_damp*ep_fraction*(-d2lZ(update_idx)'./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
+                                       ep_damp*(-d2lZ(update_idx)'./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
                   tnu(update_idx,k) = (1-ep_damp*ep_fraction)*tnu(update_idx, k) + ...
-                                      ep_damp*ep_fraction*((dlZ(update_idx)'-m_cav(update_idx).*d2lZ(update_idx)')./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
+                                      ep_damp*((dlZ(update_idx)'-m_cav(update_idx).*d2lZ(update_idx)')./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
                   
                   % Enforce positivity->lower bound ttau by zero
                   ttau(:,k) = max(ttau(:,k),0);
@@ -503,9 +503,9 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
                     
                     % Moment matching
                     ttau(update_idx,k) = (1-ep_damp*ep_fraction)*ttau(update_idx, k) + ...
-                                         ep_damp*ep_fraction*(-d2lZ(update_idx)'./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
+                                         ep_damp*(-d2lZ(update_idx)'./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
                     tnu(update_idx,k) = (1-ep_damp*ep_fraction)*tnu(update_idx, k) + ...
-                                        ep_damp*ep_fraction*((dlZ(update_idx)'-m_cav(update_idx).*d2lZ(update_idx)')./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
+                                        ep_damp*((dlZ(update_idx)'-m_cav(update_idx).*d2lZ(update_idx)')./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
 
                 end
 
@@ -532,6 +532,4 @@ function [varargout] = gf_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num_l
   
   end
   
-  
-  
-  
+end

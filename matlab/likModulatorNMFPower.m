@@ -45,8 +45,8 @@ else
       sn2_link_xn2_s2_z = sn2/ep_fraction + link_xn_W.^2 * s2_z;
       link_xn_mu_z = link_xn_W * mu_z;
       xn_mu_g_s2_g = (xn - mu_g') ./ s2_g';
-      pEP_const = (2*pi*sn2)^(0.5*(1-ep_fraction)) * ep_fraction^(-0.5);
-%       pEP_const = 1; % don't use likelihood normaliser to calc. Z          TODO: why? (see Bui (2017), eq.37)
+%       pEP_const = (2*pi*sn2)^(0.5*(1-ep_fraction)) * ep_fraction^(-0.5);
+      pEP_const = 1; % don't use likelihood normaliser to calc. Z          TODO: why? (see Bui (2017), eq.37)
       
       normy_xn = normpdf(y, ...
                            link_xn_mu_z, ...

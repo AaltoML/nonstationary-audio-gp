@@ -426,9 +426,9 @@ function [varargout] = ihgp_ep_modulator_nmf(w,x,y,ss,mom,xt,kernel1,kernel2,num
                   
                   % Moment matching
                   ttau(update_idx,k) = (1-ep_damp*ep_fraction)*ttau(update_idx, k) + ...
-                                       ep_damp*ep_fraction*(-d2lZ(update_idx)'./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
+                                       ep_damp*(-d2lZ(update_idx)'./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
                   tnu(update_idx,k) = (1-ep_damp*ep_fraction)*tnu(update_idx, k) + ...
-                                      ep_damp*ep_fraction*((dlZ(update_idx)'-m_cav(update_idx).*d2lZ(update_idx)')./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
+                                      ep_damp*((dlZ(update_idx)'-m_cav(update_idx).*d2lZ(update_idx)')./(1+d2lZ(update_idx)'.*v_cav(update_idx)));
 
                   % This is the equivalent measurement noise
                   R(update_idx,k) = 1 ./ ttau(update_idx,k); %-(1+d2lZ_'.*v_cav)./d2lZ_';
