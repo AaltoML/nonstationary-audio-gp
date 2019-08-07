@@ -101,7 +101,7 @@ function [varargout] = gf_ep_modulator(w,x,y,ss,mom,xt,kernel1,kernel2,num_lik_p
     R = zeros(D,size(yall,1));
     fs2 = zeros(D,size(yall,1));
     fmus = zeros(D,size(yall,1));
-
+    nlZ = zeros(1,ep_itts);
     
     % Initial dt
 %     dt = inf;
@@ -191,7 +191,10 @@ function [varargout] = gf_ep_modulator(w,x,y,ss,mom,xt,kernel1,kernel2,num_lik_p
 
         end
 
-
+        if itt == 1
+          nlZ(1) = -sum(lZ);
+        end
+        
         % Output debugging info
           if nargout>5
               out.tnu = tnu;
@@ -269,19 +272,21 @@ function [varargout] = gf_ep_modulator(w,x,y,ss,mom,xt,kernel1,kernel2,num_lik_p
                       % This is the equivalent measurement noise
                       R(:,k) = 1 ./ ttau(:,k); %-(1+d2lZ_'.*v_cav)./d2lZ_';
 
-                      % Max diff in m and P
-                      maxDiffM = max(maxDiffM,max(max(abs(H*MSP(:,k)-H*m))));
-                      maxDiffP = max(maxDiffP,max(max(abs(H*PSP(:,:,k)*H'-H*P*H'))));
-
                   end
               end
-
+          
+          % Max diff in m and P
+          maxDiffM = max(maxDiffM,max(max(abs(H*MSP(:,k)-H*m))));
+          maxDiffP = max(maxDiffP,max(max(abs(H*PSP(:,:,k)*H'-H*P*H'))));
+                      
           end % end smoother iteration
 
           if itt < ep_itts
-            fprintf('%.02i - max diff in m: %.6g - max diff in P: %.6g - nll: %.6g\n', ...
-                itt,maxDiffM,maxDiffP,-sum(lZ))
+            nlZ(itt+1) = -sum(lZ);
           end
+    
+          fprintf('%.02i - max diff in m: %.6g - max diff in P: %.6g - nll: %.6g\n', ...
+                  itt,maxDiffM,maxDiffP,nlZ(itt))
           
     end % end EP iteration
     

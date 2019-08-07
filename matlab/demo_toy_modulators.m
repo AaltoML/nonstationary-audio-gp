@@ -1,6 +1,6 @@
 clear
 addpath('symmetric-cubature-rules/'); % code for approximate Gaussian integrals
-addpath('unifying_prob_tf/');
+addpath('prob_filterbank/');
 
   var_fast = [ 0.1;   0.1];%   0.4];
   len_fast = [ 50.;   40.];%    20];
@@ -17,16 +17,16 @@ addpath('unifying_prob_tf/');
 %   link = @(g) exp(g);
   rng('default')
   rng(123)
-  w_lik = 1e-8; % observation noise
+  w_lik = 1e-5; % observation noise
   p_cubature = 9; % order of cubature for Gaussian integral
   max_iters = 4; % maximum number of iterations
   
-  %%% tune the hyperparameters? %%% (optimisation still quite unstable)
+  %%% tune the hyperparameters? %%%
   optimise = 0;
   
   ep_fraction = 0.5; % Power EP fraction
-  ep_itts = 3; % EP iterations
-  ep_damping = linspace(0.5, 0.5, ep_itts); % EP damping
+  ep_itts = 5; % EP iterations
+  ep_damping = linspace(0.3, 0.3, ep_itts); % EP damping
   
   likfunc = @likModulatorPower;
   
@@ -112,7 +112,7 @@ addpath('unifying_prob_tf/');
   
   Eft_mod = zeros(size(Eft(D+1:end,:)));
   Varft_mod = zeros(size(Varft(D+1:end,:)));
-  s = 250;
+  s = 1000;
   sub_samp = zeros([size(Eft(1:D,:)),s]);
   mod_samp = zeros([size(Eft(D+1:end,:)),s]);
   
@@ -153,5 +153,4 @@ addpath('unifying_prob_tf/');
   title('sum product')  
   %%
   fprintf('RMSE: %d \n',sqrt(mean((y-Esig).^2)))
-  fprintf('lZ: %d \n',sum(out.lZ))
   
